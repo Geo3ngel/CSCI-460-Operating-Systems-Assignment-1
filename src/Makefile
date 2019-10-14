@@ -7,7 +7,7 @@ CFLAGS = -Wall -std=c99
 all: assignment_01
 
 assignment_01:
-	$(CC) $(CFLAGS) Main.c -o a_1 -lpthread 
+	$(CC) $(CFLAGS) Main.c -o run_me -lpthread 
 
 clean:
 	rm -f fb a_1
