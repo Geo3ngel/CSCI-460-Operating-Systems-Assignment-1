@@ -64,11 +64,12 @@ int main(int argc, char* argv[]){
     int max_cars;
     int num_cars;
 
-    if( argc < 2){
+    if( argc < 3){
         // Set up values to a feault configuration rather than specified thread count/car max.
         thread_count = 10;
         max_cars = 3;
         num_cars = 15;
+        printf("Not enough arguements, using default values.");
     } else{
         // Initializes the maximum about of threads allowed.
         thread_count = atoi(argv[1]);
