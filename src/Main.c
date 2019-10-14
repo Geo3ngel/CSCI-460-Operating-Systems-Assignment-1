@@ -10,15 +10,25 @@
 #define TO_BOZEMAN 1
 
 
-// Global varibales:
+/// Global varibales:
 
-_Atomic int* Cars_On_OneWay;
+// One way current cars counter
+static int Cars_On_OneWay = 0;
+// Mutex for cars on one way
+pthread_mutex_t oneway_load;
+
+// The current Direction cars entering the one way are heading.
+static volatile int direction = TO_BRIDGER;
+// Mutex for the current direction
+pthread_mutex_t current_direction;
+
 
 // Vehicle simulation
 
 // NOTE: represent each vehicle as a thread.
 void* OneVehicle(void* direction){
     
+    printf("NEW CAR\n");
     ArriveBridgerOneWay(direction);
     //now the car is on the one-way section!
 
@@ -26,7 +36,6 @@ void* OneVehicle(void* direction){
     ExitBridgerOneWay(direction);
 
     //now the car is off the one way.
-    printf("NEW CAR\n");
 }
 
 // Puts a car on the one-way once it is confirmed to be safe.
@@ -91,13 +100,15 @@ int main(int argc, char* argv[]){
 
         for(iter = 0; iter < thread_count; iter++){
             // Checks the return value of the thread creation to make sure it was able to initialize sucessfully.
-            if(pthread_create(&threads[iter], NULL, OneVehicle, (void *) &iter)){
-                printf("ERROR CREATING THREAD: Assuming not enough threads avalible.");
+            int thread_creation_check = pthread_create(&threads[iter], NULL, OneVehicle, (void *) &iter);
+
+            if(thread_creation_check){
+                printf("ERROR CREATING THREAD: %d", thread_creation_check);
                 exit(-1);
             }
         }
 
-        sleep(1);
+        sleep(.01);
 
         printf("Finished making threads.\n");
 
@@ -106,7 +117,8 @@ int main(int argc, char* argv[]){
         // Join all the threads
         for(iter = 0; iter < thread_count; iter++){
             // Checks that all threads are able to join
-            if(pthread_join(threads[iter], NULL)){
+            int thread_join_error_check = pthread_join(threads[iter], NULL);
+            if(thread_join_error_check){
                 printf("ERROR Joining threads.");
             }
         }
