@@ -27,13 +27,13 @@ static volatile int current_direction = TO_BRIDGER;
 // Mutex for the current direction
 pthread_mutex_t direction_lock;
 
-struct params {
+struct car_generator {
     pthread_mutex_t mutex;
     pthread_cond_t done;
     int id;
 };
 
-typedef struct params params_t;
+typedef struct car_generator car_generator_t;
 
 // Vehicle simulation
 
@@ -43,10 +43,10 @@ void* OneVehicle(void* arg){
     int car_id;
 
     // Lock the car generator value to be sure other threads don't get the same id value.
-    pthread_mutex_lock(&(*(params_t*)(arg)).mutex);
-    car_id = (*(params_t*)(arg)).id;
-    pthread_mutex_unlock(&(*(params_t*)(arg)).mutex);
-    pthread_cond_signal(&(*(params_t*)(arg)).done);
+    pthread_mutex_lock(&(*(car_generator_t*)(arg)).mutex);
+    car_id = (*(car_generator_t*)(arg)).id;
+    pthread_mutex_unlock(&(*(car_generator_t*)(arg)).mutex);
+    pthread_cond_signal(&(*(car_generator_t*)(arg)).done);
 
     int direction = rand() % 2;
     printf("New CAR: %d. going in direction: %d\n", car_id, direction);
@@ -132,12 +132,12 @@ int main(int argc, char* argv[]){
         pthread_t threads[thread_count];
 
         // Helps with generating car ids.
-        params_t params;
-        pthread_mutex_init (&params.mutex, NULL);
-        pthread_cond_init (&params.done, NULL);
+        car_generator_t car_generator;
+        pthread_mutex_init (&car_generator.mutex, NULL);
+        pthread_cond_init (&car_generator.done, NULL);
 
         // Lock the mutex for car generator
-        pthread_mutex_lock(&params.mutex);
+        pthread_mutex_lock(&car_generator.mutex);
 
 
 
@@ -145,11 +145,11 @@ int main(int argc, char* argv[]){
             // Checks the return value of the thread creation to make sure it was able to initialize sucessfully.
 
             // Changes the current car generator id value
-            params.id = iter;
+            car_generator.id = iter;
 
-            int thread_creation_check = pthread_create(&threads[iter], NULL, OneVehicle, &params);
+            int thread_creation_check = pthread_create(&threads[iter], NULL, OneVehicle, &car_generator);
 
-            pthread_cond_wait(&params.done, &params.mutex);
+            pthread_cond_wait(&car_generator.done, &car_generator.mutex);
 
             if(thread_creation_check){
                 printf("ERROR CREATING THREAD: %d", thread_creation_check);
@@ -173,8 +173,9 @@ int main(int argc, char* argv[]){
         printf("Finished Joining Threads.\n");
 
         // Cleans up after all the synchronization primitives
-        pthread_mutex_destroy(&params.mutex);
-        pthread_cond_destroy (&params.done);
+        pthread_mutex_destroy(&car_generator.mutex);
+        pthread_cond_destroy (&car_generator.done);
+        // TODO: clean up other sync primitives.
 
         return 0;
 }
