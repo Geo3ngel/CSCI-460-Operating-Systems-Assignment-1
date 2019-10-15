@@ -27,16 +27,29 @@ static volatile int current_direction = TO_BRIDGER;
 // Mutex for the current direction
 pthread_mutex_t direction_lock;
 
+struct params {
+    pthread_mutex_t mutex;
+    pthread_cond_t done;
+    int id;
+};
+
+typedef struct params params_t;
 
 // Vehicle simulation
 
 // NOTE: represent each vehicle as a thread.
-void* OneVehicle(int* id){
+void* OneVehicle(void* arg){
     
-    printf("NEW CAR: %d\n", *id);
-    int* car_id = id;
+    int car_id;
+
+    // Lock the car generator value to be sure other threads don't get the same id value.
+    pthread_mutex_lock(&(*(params_t*)(arg)).mutex);
+    car_id = (*(params_t*)(arg)).id;
+    pthread_mutex_unlock(&(*(params_t*)(arg)).mutex);
+    pthread_cond_signal(&(*(params_t*)(arg)).done);
+
     int direction = rand() % 2;
-    printf("DIRECTION: %d\n", direction);
+    printf("New CAR: %d. going in direction: %d\n", car_id, direction);
 
     ArriveBridgerOneWay(car_id, 0);
     //now the car is on the one-way section!
@@ -49,7 +62,7 @@ void* OneVehicle(int* id){
 }
 
 // Puts a car on the one-way once it is confirmed to be safe.
-int ArriveBridgerOneWay(int* car_id, int direction){
+int ArriveBridgerOneWay(int car_id, int direction){
 
 // Checks if it is safe for the car to go on the one way
 pthread_mutex_lock(&oneway_load);
@@ -62,7 +75,7 @@ while((Cars_On_OneWay >= max_cars) || (current_direction != direction)){
 }
 
 // Puts a car on the one way.
-printf("Putting Car: %d on the one way, going towards: %d\n", *car_id,direction);
+printf("Putting Car: %d on the one way, going towards: %d\n", car_id,direction);
 Cars_On_OneWay += 1;
 
 pthread_mutex_unlock(&oneway_load);
@@ -89,7 +102,7 @@ int ExitBridgerOneWay(int direction){
 // Main Program Loop
 int main(int argc, char* argv[]){
     // Initializes iterator
-    int iter = 0;
+    int iter;
     int thread_count;
     int num_cars;
 
@@ -118,12 +131,29 @@ int main(int argc, char* argv[]){
         // Create the threads
         pthread_t threads[thread_count];
 
+        // Helps with generating car ids.
+        params_t params;
+        pthread_mutex_init (&params.mutex, NULL);
+        pthread_cond_init (&params.done, NULL);
+
+        // Lock the mutex for car generator
+        pthread_mutex_lock(&params.mutex);
+
+
+
         for(iter = 0; iter < thread_count; iter++){
             // Checks the return value of the thread creation to make sure it was able to initialize sucessfully.
-            int thread_creation_check = pthread_create(&threads[iter], NULL, OneVehicle, &iter);
+
+            // Changes the current car generator id value
+            params.id = iter;
+
+            int thread_creation_check = pthread_create(&threads[iter], NULL, OneVehicle, &params);
+
+            pthread_cond_wait(&params.done, &params.mutex);
 
             if(thread_creation_check){
                 printf("ERROR CREATING THREAD: %d", thread_creation_check);
+                // Release pthread mutex here???
                 exit(-1);
             }
         }
@@ -131,8 +161,6 @@ int main(int argc, char* argv[]){
         sleep(.01);
 
         printf("Finished making threads.\n");
-
-        iter = 0;
 
         // Join all the threads
         for(iter = 0; iter < thread_count; iter++){
@@ -144,4 +172,9 @@ int main(int argc, char* argv[]){
         }
         printf("Finished Joining Threads.\n");
 
+        // Cleans up after all the synchronization primitives
+        pthread_mutex_destroy(&params.mutex);
+        pthread_cond_destroy (&params.done);
+
+        return 0;
 }
