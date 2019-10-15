@@ -12,44 +12,65 @@
 
 /// Global varibales:
 
-// One way current cars counter
-static int Cars_On_OneWay = 0;
+static int max_cars;
+
 // Mutex for cars on one way
 pthread_mutex_t oneway_load;
+// Condition for cars to be able to be added to one way
+pthread_cond_t under_max_load;
+// One way current cars counter
+static int Cars_On_OneWay = 0;
+
 
 // The current Direction cars entering the one way are heading.
-static volatile int direction = TO_BRIDGER;
+static volatile int current_direction = TO_BRIDGER;
 // Mutex for the current direction
-pthread_mutex_t current_direction;
+pthread_mutex_t direction_lock;
 
 
 // Vehicle simulation
 
 // NOTE: represent each vehicle as a thread.
-void* OneVehicle(void* direction){
+void* OneVehicle(int* id){
     
-    printf("NEW CAR\n");
-    ArriveBridgerOneWay(direction);
+    printf("NEW CAR: %d\n", *id);
+    int* car_id = id;
+    int direction = rand() % 2;
+    printf("DIRECTION: %d\n", direction);
+
+    ArriveBridgerOneWay(car_id, 0);
     //now the car is on the one-way section!
 
     OnBridgerOneWay(direction);
     ExitBridgerOneWay(direction);
 
     //now the car is off the one way.
+    pthread_exit(NULL);
 }
 
 // Puts a car on the one-way once it is confirmed to be safe.
-int ArriveBridgerOneWay(void* direction){
-// TODO: Must not return until its safe for the car to get on the one-way
+int ArriveBridgerOneWay(int* car_id, int direction){
 
 // Checks if it is safe for the car to go on the one way
+pthread_mutex_lock(&oneway_load);
+pthread_mutex_lock(&direction_lock);
 
-// Sends a car on the one-way in the direction specified
+printf("current direction: %d == direction: %d\n", current_direction, direction);
+while((Cars_On_OneWay >= max_cars) || (current_direction != direction)){
+    printf("In this while loop\n");
+    pthread_cond_wait(&under_max_load, &oneway_load);
+}
 
+// Puts a car on the one way.
+printf("Putting Car: %d on the one way, going towards: %d\n", *car_id,direction);
+Cars_On_OneWay += 1;
+
+pthread_mutex_unlock(&oneway_load);
+pthread_mutex_unlock(&direction_lock);
 }
 
 // Outputs the car's state as it passes through the one way.
-int OnBridgerOneWay(void* direction){
+int OnBridgerOneWay(int* car_id, int direction){
 // TODO: Use prints or graphics library?
 
 // Checks the capacity of the one way
@@ -58,7 +79,7 @@ int OnBridgerOneWay(void* direction){
 }
 
 // Removes the car from the one way
-int ExitBridgerOneWay(void* direction){
+int ExitBridgerOneWay(int direction){
 // Removes car from critical area?
 
 // Unlocks access to this area?
@@ -70,7 +91,6 @@ int main(int argc, char* argv[]){
     // Initializes iterator
     int iter = 0;
     int thread_count;
-    int max_cars;
     int num_cars;
 
     if( argc < 3){
@@ -100,7 +120,7 @@ int main(int argc, char* argv[]){
 
         for(iter = 0; iter < thread_count; iter++){
             // Checks the return value of the thread creation to make sure it was able to initialize sucessfully.
-            int thread_creation_check = pthread_create(&threads[iter], NULL, OneVehicle, (void *) &iter);
+            int thread_creation_check = pthread_create(&threads[iter], NULL, OneVehicle, &iter);
 
             if(thread_creation_check){
                 printf("ERROR CREATING THREAD: %d", thread_creation_check);
