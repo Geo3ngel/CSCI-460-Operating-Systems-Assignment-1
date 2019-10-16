@@ -162,9 +162,17 @@ int main(int argc, char* argv[]){
 
         // initializes the maximum threshold of cars the one way can handle at a time.
         max_cars = atoi(argv[2]);
+        if(max_cars < 1){
+            printf("Max_Cars value cannot be below 1. Defaulting value to: 1.\n");
+            max_cars = 1;
+        }
 
         // Initializes the number of cars to generate
         num_cars = atoi(argv[3]);
+        if(num_cars < 1){
+            printf("The number of Cars cannot be below 1. Defaulting value to: 1.\n");
+            num_cars = 1;
+        }
 
         // Sets the random seed value for generating car's directions.
         seed = atoi(argv[4]);
