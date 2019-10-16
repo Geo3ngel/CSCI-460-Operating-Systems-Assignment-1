@@ -9,12 +9,14 @@
 // Constants:
 #define TO_BRIDGER 0
 #define TO_BOZEMAN 1
+#define WAITFOR .01
 
 
 /// Global varibales:
 
 static int max_cars;
 
+// Variables pertaining to the total amount of cars that have crossed the one way.
 static int cars_crossed;
 pthread_mutex_t crossed_count_lock;
 pthread_cond_t crossed;
@@ -23,8 +25,6 @@ pthread_cond_t crossed;
 pthread_mutex_t one_way_t;
 // Notifier for when the below values are freed
 pthread_cond_t one_way_vals_free;
-// Notifier for when a car leaves the one way to check if the direction needs to be updated.
-pthread_cond_t car_left_one_way;
 
 // One way current cars counter
 static int Cars_On_OneWay = 0;
@@ -72,6 +72,19 @@ void* OneVehicle(void* arg){
     pthread_exit(NULL);
 }
 
+// Translates a car's direction to string.
+char* DirectionToString(int direction){
+    char dir[7];
+    if(direction == TO_BOZEMAN){
+        strcpy(dir, "BOZEMAN");
+    }else{
+        strcpy(dir, "BRIDGER");
+    }
+
+    char * rtn_ptr = dir;
+    return rtn_ptr;
+}
+
 // Puts a car on the one-way once it is confirmed to be safe.
 int ArriveBridgerOneWay(int car_id, int direction){
 
@@ -82,7 +95,7 @@ int ArriveBridgerOneWay(int car_id, int direction){
 
     gettimeofday(&now, NULL);
     // For waiting 5 seconds.
-    timeToWait.tv_sec = now.tv_sec + 1;
+    timeToWait.tv_sec = now.tv_sec + WAITFOR;
     timeToWait.tv_nsec = (now.tv_usec*1000UL);
     rc = 0;
 
@@ -94,17 +107,16 @@ int ArriveBridgerOneWay(int car_id, int direction){
         printf("Car %d In this while loop\n", car_id);
         rc = pthread_cond_timedwait(&one_way_vals_free, &one_way_t, &timeToWait);
 
-        printf("RC: %d\n", rc);
-        // Do Direction function if rc value is true?
+        // If the time out occurs, check if direction change is possible.
         if(rc == 110 && Cars_On_OneWay < 1){
             
             current_direction = (current_direction+1)%2;
-            printf("In Car: New direction is now: %d\n", current_direction);
+            printf("In Car: New direction is now: %s\n", DirectionToString(current_direction));
         }
     }
 
     // Puts a car on the one way.
-    printf("Putting Car: %d on the one way, going towards: %d\n\n", car_id,direction);
+    printf("Putting Car: %d on the one way, going towards: %s\n\n", car_id, DirectionToString(direction));
     Cars_On_OneWay += 1;
     pthread_mutex_unlock(&one_way_t);
 
@@ -114,14 +126,7 @@ int ArriveBridgerOneWay(int car_id, int direction){
 // Outputs the car's state as it passes through the one way.
 int OnBridgerOneWay(int* car_id, int direction){
 
-    char dir[7];
-    if(direction == TO_BOZEMAN){
-        strcpy(dir, "BOZEMAN");
-    }else{
-        strcpy(dir, "BRIDGER");
-    }
-
-    printf("Car %d is on the run way going towards %s\n", car_id, dir);
+    printf("Car %d is on the run way going towards %s \n", car_id, DirectionToString(direction));
 }
 
 // Removes the car from the one way
@@ -131,7 +136,7 @@ int ExitBridgerOneWay(int car_id, int direction){
     pthread_mutex_lock(&one_way_t);
 
     // Puts a car on the one way.
-    printf("Car: %d has left the one way, and is continuing towards: %d\n", car_id, direction);
+    printf("Car: %d has left the one way, and is continuing towards: %s\n", car_id, DirectionToString(direction));
     Cars_On_OneWay -= 1;
 
     // TODO: change direction & notify other cars if there are none left
@@ -140,7 +145,7 @@ int ExitBridgerOneWay(int car_id, int direction){
     // Changes direction by default if the amount of cars on the one way is 0 after this car exits.
     if(Cars_On_OneWay < 1){
         current_direction = (current_direction+1)%2;
-        printf("No more on one-way after exit, direction is now: %d\n", current_direction);
+        printf("No more on one-way after exit, direction is now: %s\n", DirectionToString(current_direction));
     }
     pthread_mutex_unlock(&one_way_t);
 
