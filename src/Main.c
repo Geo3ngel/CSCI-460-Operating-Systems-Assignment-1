@@ -16,6 +16,7 @@
 
 static int max_cars;
 static int dir_change_limit;
+static bool draining_one_way;
 
 // Variables pertaining to the total amount of cars that have crossed the one way.
 static int cars_crossed;
@@ -48,6 +49,19 @@ typedef struct car_generator car_generator_t;
 
 // Vehicle simulation
 
+// Translates a car's direction to string.
+char* DirectionToString(int direction){
+    char dir[7];
+    if(direction == TO_BOZEMAN){
+        strcpy(dir, "BOZEMAN");
+    }else{
+        strcpy(dir, "BRIDGER");
+    }
+
+    char * rtn_ptr = dir;
+    return rtn_ptr;
+}
+
 // Represents a vehicle as a thread
 void* OneVehicle(void* arg){
     
@@ -61,7 +75,7 @@ void* OneVehicle(void* arg){
     pthread_mutex_unlock(&(*(car_generator_t*)(arg)).mutex);
     pthread_cond_signal(&(*(car_generator_t*)(arg)).done);
 
-    printf("New CAR: %d. going in direction: %d\n", car_id, direction);
+    printf("New CAR: %d. going in direction: %s\n", car_id, DirectionToString(direction));
 
     ArriveBridgerOneWay(car_id, direction);
     //now the car is on the one-way section!
@@ -77,19 +91,6 @@ void* OneVehicle(void* arg){
     pthread_exit(NULL);
 }
 
-// Translates a car's direction to string.
-char* DirectionToString(int direction){
-    char dir[7];
-    if(direction == TO_BOZEMAN){
-        strcpy(dir, "BOZEMAN");
-    }else{
-        strcpy(dir, "BRIDGER");
-    }
-
-    char * rtn_ptr = dir;
-    return rtn_ptr;
-}
-
 // Puts a car on the one-way once it is confirmed to be safe.
 int ArriveBridgerOneWay(int car_id, int direction){
 
@@ -100,41 +101,32 @@ int ArriveBridgerOneWay(int car_id, int direction){
 
     gettimeofday(&now, NULL);
     // For waiting 5 seconds.
-    timeToWait.tv_sec = now.tv_sec + WAITFOR;
-    timeToWait.tv_nsec = (now.tv_usec*1000UL);
+    
     rc = 0;
 
     // Checks if it is safe for the car to go on the one way
     pthread_mutex_lock(&one_way_t);
 
-    while((Cars_On_OneWay >= max_cars) || (current_direction != direction)){
+    printf("Car %d has arrived at the one way facing %s\n", car_id, DirectionToString(direction));
+    while((Cars_On_OneWay >= max_cars) || (current_direction != direction) || draining_one_way){
         timeToWait.tv_sec = now.tv_sec + WAITFOR;
         timeToWait.tv_nsec = (now.tv_usec*1000UL);
-        printf("Car %d is currently waiting to get on the One-Way towards %s\n", car_id, DirectionToString(direction));
+        //printf("Car %d is currently waiting to get on the One-Way towards %s\n", car_id, DirectionToString(direction));
 
         // If the time out occurs, check if direction change is possible.
         if(rc == 110){
-            if(dir_change_count >= dir_change_limit){
-                // TODO: Let the one way run out of cars before continuing
-                printf("MAX CARS HIT\n");
-                // Make sure the one way empties out before changing direction
-                while(Cars_On_OneWay > 0){
-                    timeToWait.tv_sec = now.tv_sec + WAITFOR;
-                    timeToWait.tv_nsec = (now.tv_usec*1000UL);
-                    printf("WAITING %d\n", car_id);
-                    pthread_cond_timedwait(&direction_changed, &one_way_t, &timeToWait);
-                }
-                current_direction = (current_direction+1)%2;
-                printf("Direction has been changed to: %s\n", DirectionToString(current_direction));
-                printf("DIR CHANGE COUNT: %d\n", dir_change_count);
-
-                // Reset the amount of cars for direction change counter
-                dir_change_count = 0;
-            }else if(Cars_On_OneWay < 1){
+            if(Cars_On_OneWay < 1){
+                draining_one_way = false;
                 current_direction = (current_direction+1)%2;
                 printf("Direction has been changed to: %s\n", 
                 DirectionToString(current_direction));
-            } 
+            } else if(dir_change_count >= dir_change_limit){
+                
+                draining_one_way = true;
+
+                // Reset the amount of cars for direction change counter
+                dir_change_count = 0;
+            }
         }
 
         rc = pthread_cond_timedwait(&one_way_vals_free, &one_way_t, &timeToWait);
@@ -195,6 +187,7 @@ int main(int argc, char* argv[]){
     int seed;
     cars_crossed = 0;
     dir_change_count = 0;
+    draining_one_way = false;
 
     // Helps with generating car ids.
     car_generator_t car_generator;
