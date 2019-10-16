@@ -15,6 +15,7 @@
 /// Global varibales:
 
 static int max_cars;
+static int dir_change_limit;
 
 // Variables pertaining to the total amount of cars that have crossed the one way.
 static int cars_crossed;
@@ -25,6 +26,10 @@ pthread_cond_t crossed;
 pthread_mutex_t one_way_t;
 // Notifier for when the below values are freed
 pthread_cond_t one_way_vals_free;
+static int dir_change_count;
+
+pthread_mutex_t direction_change;
+pthread_cond_t direction_changed;
 
 // One way current cars counter
 static int Cars_On_OneWay = 0;
@@ -43,7 +48,7 @@ typedef struct car_generator car_generator_t;
 
 // Vehicle simulation
 
-// NOTE: represent each vehicle as a thread.
+// Represents a vehicle as a thread
 void* OneVehicle(void* arg){
     
     int car_id;
@@ -102,22 +107,47 @@ int ArriveBridgerOneWay(int car_id, int direction){
     // Checks if it is safe for the car to go on the one way
     pthread_mutex_lock(&one_way_t);
 
-    printf("Car %d: current direction: %d == direction: %d\n", car_id, current_direction, direction);
     while((Cars_On_OneWay >= max_cars) || (current_direction != direction)){
-        printf("Car %d In this while loop\n", car_id);
-        rc = pthread_cond_timedwait(&one_way_vals_free, &one_way_t, &timeToWait);
+        timeToWait.tv_sec = now.tv_sec + WAITFOR;
+        timeToWait.tv_nsec = (now.tv_usec*1000UL);
+        printf("Car %d is currently waiting to get on the One-Way towards %s\n", car_id, DirectionToString(direction));
 
         // If the time out occurs, check if direction change is possible.
-        if(rc == 110 && Cars_On_OneWay < 1){
-            
-            current_direction = (current_direction+1)%2;
-            printf("In Car: New direction is now: %s\n", DirectionToString(current_direction));
+        if(rc == 110){
+            if(dir_change_count >= dir_change_limit){
+                // TODO: Let the one way run out of cars before continuing
+                printf("MAX CARS HIT\n");
+                // Make sure the one way empties out before changing direction
+                while(Cars_On_OneWay > 0){
+                    timeToWait.tv_sec = now.tv_sec + WAITFOR;
+                    timeToWait.tv_nsec = (now.tv_usec*1000UL);
+                    printf("WAITING %d\n", car_id);
+                    pthread_cond_timedwait(&direction_changed, &one_way_t, &timeToWait);
+                }
+                current_direction = (current_direction+1)%2;
+                printf("Direction has been changed to: %s\n", DirectionToString(current_direction));
+                printf("DIR CHANGE COUNT: %d\n", dir_change_count);
+
+                // Reset the amount of cars for direction change counter
+                dir_change_count = 0;
+            }else if(Cars_On_OneWay < 1){
+                current_direction = (current_direction+1)%2;
+                printf("Direction has been changed to: %s\n", 
+                DirectionToString(current_direction));
+            } 
         }
+
+        rc = pthread_cond_timedwait(&one_way_vals_free, &one_way_t, &timeToWait);
     }
+    
+    pthread_mutex_lock(&direction_change);
+    dir_change_count++;
+    pthread_mutex_unlock(&direction_change);
+    pthread_cond_signal(&direction_changed);
 
     // Puts a car on the one way.
     printf("Putting Car: %d on the one way, going towards: %s\n\n", car_id, DirectionToString(direction));
-    Cars_On_OneWay += 1;
+    Cars_On_OneWay++;
     pthread_mutex_unlock(&one_way_t);
 
     pthread_cond_signal(&one_way_vals_free);
@@ -143,27 +173,28 @@ int ExitBridgerOneWay(int car_id, int direction){
     printf("Cars_On_OneWay: %d\n\n", Cars_On_OneWay);
 
     // Changes direction by default if the amount of cars on the one way is 0 after this car exits.
-    if(Cars_On_OneWay < 1){
-        current_direction = (current_direction+1)%2;
-        printf("No more on one-way after exit, direction is now: %s\n", DirectionToString(current_direction));
-    }
     pthread_mutex_unlock(&one_way_t);
 
     pthread_mutex_lock(&crossed_count_lock);
     cars_crossed++;
-    printf("CARS CROSSED: %d\n", cars_crossed);
+    // TODO: Remove. printf("CARS CROSSED: %d\n", cars_crossed);
     pthread_mutex_unlock(&crossed_count_lock);
     pthread_cond_signal(&crossed);
+
+    // Wake up threads trying to change direction
+    pthread_cond_signal(&direction_changed);
+
 }
 
 // Main Program Loop
 int main(int argc, char* argv[]){
     // Initializes iterator
     int iter;
-    int thread_count;
     int num_cars;
+    int dir_change_limit;
     int seed;
     cars_crossed = 0;
+    dir_change_count = 0;
 
     // Helps with generating car ids.
     car_generator_t car_generator;
@@ -172,15 +203,19 @@ int main(int argc, char* argv[]){
 
     if( argc < 4){
         // Set up values to a feault configuration rather than specified thread count/car max.
-        thread_count = 10;
-        max_cars = 3;
-        num_cars = 15;
+        num_cars = 100;
+        max_cars = 5;
+        dir_change_limit = 15;
         // Default run has a random seed.
         seed = time(NULL);
         printf("Not enough arguements, using default values.\n");
     } else{
         // Initializes the maximum about of threads allowed.
-        thread_count = atoi(argv[1]);
+        num_cars = atoi(argv[1]);
+        if(num_cars < 1){
+            printf("The number of Cars cannot be below 1. Defaulting value to: 1.\n");
+            num_cars = 1;
+        }
 
         // initializes the maximum threshold of cars the one way can handle at a time.
         max_cars = atoi(argv[2]);
@@ -190,10 +225,10 @@ int main(int argc, char* argv[]){
         }
 
         // Initializes the number of cars to generate
-        num_cars = atoi(argv[3]);
-        if(num_cars < 1){
-            printf("The number of Cars cannot be below 1. Defaulting value to: 1.\n");
-            num_cars = 1;
+        dir_change_limit = atoi(argv[3]);
+        if(dir_change_limit < 1){
+            printf("The limit of Cars per direction change cycle can't be less than 1, setting to 1...\n");
+            dir_change_limit = 1;
         }
 
         // Sets the random seed value for generating car's directions.
@@ -204,18 +239,19 @@ int main(int argc, char* argv[]){
 
         printf("SIMULATION SETTINGS:\n");
 
-        printf("1) Initializing with %d threads.\n", thread_count);
+        printf("1) Initializing with %d Cars.\n", num_cars);
         printf("2) Maximum # of cars allowed on the one-way: %d\n", max_cars);
+        printf("3) Maximum # of cars per one-way cycle: %d\n\n", dir_change_limit);
 
         // Create the threads
-        pthread_t threads[thread_count];
+        pthread_t threads[num_cars];
 
         // Lock the mutex for car generator
         pthread_mutex_lock(&car_generator.mutex);
 
 
 
-        for(iter = 0; iter < thread_count; iter++){
+        for(iter = 0; iter < num_cars; iter++){
             // Checks the return value of the thread creation to make sure it was able to initialize sucessfully.
 
             // Changes the current car generator id value
@@ -239,7 +275,7 @@ int main(int argc, char* argv[]){
         printf("Finished making threads.\n");
 
         // Join all the threads
-        for(iter = 0; iter < thread_count; iter++){
+        for(iter = 0; iter < num_cars; iter++){
             // Checks that all threads are able to join
             int thread_join_error_check = pthread_join(threads[iter], NULL);
             if(thread_join_error_check){
