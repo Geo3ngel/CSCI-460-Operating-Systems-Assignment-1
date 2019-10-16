@@ -45,7 +45,6 @@ static int Cars_On_OneWay = 0;
 // The current Direction cars entering the one way are heading.
 static volatile int current_direction = TO_BRIDGER;
 
-// TODO: Define other mutex locks and stuff as structs???
 struct car_generator {
     pthread_mutex_t mutex;
     pthread_cond_t done;
@@ -55,20 +54,10 @@ struct car_generator {
 
 typedef struct car_generator car_generator_t;
 
+// Prototypes:
+char* DirectionToString(int direction);
+
 // Vehicle simulation
-
-// Translates a car's direction to string.
-char* DirectionToString(int direction){
-    char dir[7];
-    if(direction == TO_BOZEMAN){
-        strcpy(dir, "BOZEMAN");
-    }else{
-        strcpy(dir, "BRIDGER");
-    }
-
-    char * rtn_ptr = dir;
-    return rtn_ptr;
-}
 
 // Represents a vehicle as a thread
 void* OneVehicle(void* arg){
@@ -146,7 +135,7 @@ int ArriveBridgerOneWay(int car_id, int direction){
     pthread_cond_signal(&direction_changed);
 
     // Puts a car on the one way.
-    printf("Putting Car: %d on the one way, going towards: %s\n\n", car_id, DirectionToString(direction));
+    printf(KGRN "Putting Car: %d on the one way, going towards: %s\n\n" KWHT, car_id, DirectionToString(direction));
     Cars_On_OneWay++;
     pthread_mutex_unlock(&one_way_t);
 
@@ -156,7 +145,7 @@ int ArriveBridgerOneWay(int car_id, int direction){
 // Outputs the car's state as it passes through the one way.
 int OnBridgerOneWay(int* car_id, int direction){
 
-    printf("Car %d is on the run way going towards %s \n", car_id, DirectionToString(direction));
+    printf(KCYN "Car %d is on the one way going towards %s \n" KWHT, car_id, DirectionToString(direction));
 }
 
 // Removes the car from the one way
@@ -166,7 +155,7 @@ int ExitBridgerOneWay(int car_id, int direction){
     pthread_mutex_lock(&one_way_t);
 
     // Puts a car on the one way.
-    printf(KYEL "Car: %d has left the one way, and is continuing towards: %s\n" KWHT, car_id, DirectionToString(direction));
+    printf(KYEL "Car %d has left the one way, and is continuing towards: %s\n" KWHT, car_id, DirectionToString(direction));
     Cars_On_OneWay -= 1;
 
     // TODO: change direction & notify other cars if there are none left
@@ -292,4 +281,17 @@ int main(int argc, char* argv[]){
 
         printf("TOTAL CARS CROSSED: %d\n", cars_crossed);
         return 0;
+}
+
+// Translates a car's direction to string.
+char* DirectionToString(int direction){
+    char dir[7];
+    if(direction == TO_BOZEMAN){
+        strcpy(dir, "BOZEMAN");
+    }else{
+        strcpy(dir, "BRIDGER");
+    }
+
+    char * rtn_ptr = dir;
+    return rtn_ptr;
 }
