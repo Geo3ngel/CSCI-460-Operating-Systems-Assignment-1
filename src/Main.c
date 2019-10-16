@@ -31,6 +31,7 @@ struct car_generator {
     pthread_mutex_t mutex;
     pthread_cond_t done;
     int id;
+    int direction;
 };
 
 typedef struct car_generator car_generator_t;
@@ -45,11 +46,11 @@ void* OneVehicle(void* arg){
     // Lock the car generator value to be sure other threads don't get the same id value.
     pthread_mutex_lock(&(*(car_generator_t*)(arg)).mutex);
     car_id = (*(car_generator_t*)(arg)).id;
+    // TODO: Make this generate from SEED value.
+    int direction = (*(car_generator_t*)(arg)).direction;
     pthread_mutex_unlock(&(*(car_generator_t*)(arg)).mutex);
     pthread_cond_signal(&(*(car_generator_t*)(arg)).done);
 
-    // TODO: Make this generate from SEED value.
-    int direction = rand() % 2;
     printf("New CAR: %d. going in direction: %d\n", car_id, direction);
 
     ArriveBridgerOneWay(car_id, direction);
@@ -140,12 +141,20 @@ int main(int argc, char* argv[]){
     int iter;
     int thread_count;
     int num_cars;
+    int seed;
 
-    if( argc < 3){
+    // Helps with generating car ids.
+    car_generator_t car_generator;
+    pthread_mutex_init (&car_generator.mutex, NULL);
+    pthread_cond_init (&car_generator.done, NULL);
+
+    if( argc < 4){
         // Set up values to a feault configuration rather than specified thread count/car max.
         thread_count = 10;
         max_cars = 3;
         num_cars = 15;
+        // Default run has a random seed.
+        seed = time(NULL);
         printf("Not enough arguements, using default values.\n");
     } else{
         // Initializes the maximum about of threads allowed.
@@ -156,8 +165,13 @@ int main(int argc, char* argv[]){
 
         // Initializes the number of cars to generate
         num_cars = atoi(argv[3]);
+
+        // Sets the random seed value for generating car's directions.
+        seed = atoi(argv[4]);
     }
     
+        srand(seed);
+
         printf("SIMULATION SETTINGS:\n");
 
         printf("1) Initializing with %d threads.\n", thread_count);
@@ -165,11 +179,6 @@ int main(int argc, char* argv[]){
 
         // Create the threads
         pthread_t threads[thread_count];
-
-        // Helps with generating car ids.
-        car_generator_t car_generator;
-        pthread_mutex_init (&car_generator.mutex, NULL);
-        pthread_cond_init (&car_generator.done, NULL);
 
         // Lock the mutex for car generator
         pthread_mutex_lock(&car_generator.mutex);
@@ -181,6 +190,8 @@ int main(int argc, char* argv[]){
 
             // Changes the current car generator id value
             car_generator.id = iter;
+            // randomly generates from seeded value.
+            car_generator.direction = rand() % 2;
 
             int thread_creation_check = pthread_create(&threads[iter], NULL, OneVehicle, &car_generator);
 
