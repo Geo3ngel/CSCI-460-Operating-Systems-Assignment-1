@@ -14,18 +14,17 @@
 
 static int max_cars;
 
-// Mutex for cars on one way
-pthread_mutex_t oneway_load;
-// Condition for cars to be able to be added to one way
-pthread_cond_t under_max_load;
+// Mutex for managing one way related values below.
+pthread_mutex_t one_way_t;
+// Notifier for when the below values are freed
+pthread_cond_t one_way_vals_free;
+// Notifier for when a car leaves the one way to check if the direction needs to be updated.
+pthread_cond_t car_left_one_way;
+
 // One way current cars counter
 static int Cars_On_OneWay = 0;
-
-
 // The current Direction cars entering the one way are heading.
 static volatile int current_direction = TO_BRIDGER;
-// Mutex for the current direction
-pthread_mutex_t direction_lock;
 
 // TODO: Define other mutex locks and stuff as structs???
 struct car_generator {
@@ -53,10 +52,14 @@ void* OneVehicle(void* arg){
     int direction = rand() % 2;
     printf("New CAR: %d. going in direction: %d\n", car_id, direction);
 
-    ArriveBridgerOneWay(car_id, 0);
+    ArriveBridgerOneWay(car_id, direction);
     //now the car is on the one-way section!
 
+    //temp 
+    sleep(.05);
     OnBridgerOneWay(car_id, direction);
+    // temp
+    sleep(.05);
     ExitBridgerOneWay(car_id, direction);
 
     //now the car is off the one way.
@@ -66,28 +69,27 @@ void* OneVehicle(void* arg){
 // Puts a car on the one-way once it is confirmed to be safe.
 int ArriveBridgerOneWay(int car_id, int direction){
 
-// Checks if it is safe for the car to go on the one way
-pthread_mutex_lock(&oneway_load);
-pthread_mutex_lock(&direction_lock);
+    // Checks if it is safe for the car to go on the one way
+    pthread_mutex_lock(&one_way_t);
 
-printf("current direction: %d == direction: %d\n", current_direction, direction);
-while((Cars_On_OneWay >= max_cars) || (current_direction != direction)){
-    printf("In this while loop\n");
-    pthread_cond_wait(&under_max_load, &oneway_load);
-}
+    printf("Car %d: current direction: %d == direction: %d\n", car_id, current_direction, direction);
+    while((Cars_On_OneWay >= max_cars) || (current_direction != direction)){
+        printf("Car %d In this while loop\n", car_id);
+        pthread_cond_wait(&one_way_vals_free, &one_way_t);
+    }
 
-// Puts a car on the one way.
-printf("Putting Car: %d on the one way, going towards: %d\n", car_id,direction);
-Cars_On_OneWay += 1;
+    // Puts a car on the one way.
+    printf("Putting Car: %d on the one way, going towards: %d\n\n", car_id,direction);
+    Cars_On_OneWay += 1;
+    pthread_mutex_unlock(&one_way_t);
 
-pthread_mutex_unlock(&oneway_load);
-pthread_mutex_unlock(&direction_lock);
+    pthread_cond_signal(&one_way_vals_free);
 }
 
 // Outputs the car's state as it passes through the one way.
 int OnBridgerOneWay(int* car_id, int direction){
 
-    printf("Car %d is on the run way going %d", car_id, direction);
+    printf("Car %d is on the run way going %d\n", car_id, direction);
 
     // TODO: Make sure cars don't try to pass each other on the one way? (Race conditions)
 
@@ -99,19 +101,38 @@ int OnBridgerOneWay(int* car_id, int direction){
 int ExitBridgerOneWay(int car_id, int direction){
         
     // Checks if it is safe for the car to go on the one way
-    pthread_mutex_lock(&oneway_load);
-    pthread_mutex_lock(&direction_lock);
+    pthread_mutex_lock(&one_way_t);
 
     // Puts a car on the one way.
     printf("Car: %d has left the one way, and is continuing towards: %d\n", car_id, direction);
     Cars_On_OneWay -= 1;
 
     // TODO: change direction & notify other cars if there are none left
+    printf("Cars_On_OneWay: %d\n\n", Cars_On_OneWay);
+    pthread_mutex_unlock(&one_way_t);
 
-    pthread_mutex_unlock(&oneway_load);
-    pthread_mutex_unlock(&direction_lock);
+    DirectionChange();
+
+    pthread_cond_signal(&one_way_vals_free);
+    pthread_cond_signal(&car_left_one_way);
 }
 
+int DirectionChange(){
+
+    printf("Checking DirectionChange...\n");
+    pthread_mutex_lock(&one_way_t);
+    while(Cars_On_OneWay > 0){
+        // TODO: Maybe use a different condition here? (Only update when a car has left the one way)
+        pthread_cond_wait(&car_left_one_way, &one_way_t);
+    }
+
+    current_direction = (current_direction+1)%2;
+    printf("New direction is now: %d\n", current_direction);
+    pthread_mutex_unlock(&one_way_t);
+
+    // Lets the remaining cars know the directin has been changed and is ready to take on new ones.
+    pthread_cond_signal(&one_way_vals_free);
+}
 
 // Main Program Loop
 int main(int argc, char* argv[]){
