@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 // Constants:
 #define TO_BRIDGER 0
@@ -13,6 +14,10 @@
 /// Global varibales:
 
 static int max_cars;
+
+static int cars_crossed;
+pthread_mutex_t crossed_count_lock;
+pthread_cond_t crossed;
 
 // Mutex for managing one way related values below.
 pthread_mutex_t one_way_t;
@@ -70,13 +75,32 @@ void* OneVehicle(void* arg){
 // Puts a car on the one-way once it is confirmed to be safe.
 int ArriveBridgerOneWay(int car_id, int direction){
 
+    // Set up for mutex time out
+    struct timespec timeToWait;
+    struct timeval now;
+    int rc;
+
+    gettimeofday(&now, NULL);
+    // For waiting 5 seconds.
+    timeToWait.tv_sec = now.tv_sec + 1;
+    timeToWait.tv_nsec = (now.tv_usec*1000UL);
+    rc = 0;
+
     // Checks if it is safe for the car to go on the one way
     pthread_mutex_lock(&one_way_t);
 
     printf("Car %d: current direction: %d == direction: %d\n", car_id, current_direction, direction);
     while((Cars_On_OneWay >= max_cars) || (current_direction != direction)){
         printf("Car %d In this while loop\n", car_id);
-        pthread_cond_wait(&one_way_vals_free, &one_way_t);
+        rc = pthread_cond_timedwait(&one_way_vals_free, &one_way_t, &timeToWait);
+
+        printf("RC: %d\n", rc);
+        // Do Direction function if rc value is true?
+        if(rc == 110 && Cars_On_OneWay < 1){
+            
+            current_direction = (current_direction+1)%2;
+            printf("In Car: New direction is now: %d\n", current_direction);
+        }
     }
 
     // Puts a car on the one way.
@@ -90,12 +114,14 @@ int ArriveBridgerOneWay(int car_id, int direction){
 // Outputs the car's state as it passes through the one way.
 int OnBridgerOneWay(int* car_id, int direction){
 
-    printf("Car %d is on the run way going %d\n", car_id, direction);
+    char dir[7];
+    if(direction == TO_BOZEMAN){
+        strcpy(dir, "BOZEMAN");
+    }else{
+        strcpy(dir, "BRIDGER");
+    }
 
-    // TODO: Make sure cars don't try to pass each other on the one way? (Race conditions)
-
-    // Monitors for race conditions via visual output!
-    // TODO: Use prints or graphics library?
+    printf("Car %d is on the run way going towards %s\n", car_id, dir);
 }
 
 // Removes the car from the one way
@@ -110,29 +136,19 @@ int ExitBridgerOneWay(int car_id, int direction){
 
     // TODO: change direction & notify other cars if there are none left
     printf("Cars_On_OneWay: %d\n\n", Cars_On_OneWay);
-    pthread_mutex_unlock(&one_way_t);
 
-    DirectionChange();
-
-    pthread_cond_signal(&one_way_vals_free);
-    pthread_cond_signal(&car_left_one_way);
-}
-
-int DirectionChange(){
-
-    printf("Checking DirectionChange...\n");
-    pthread_mutex_lock(&one_way_t);
-    while(Cars_On_OneWay > 0){
-        // TODO: Maybe use a different condition here? (Only update when a car has left the one way)
-        pthread_cond_wait(&car_left_one_way, &one_way_t);
+    // Changes direction by default if the amount of cars on the one way is 0 after this car exits.
+    if(Cars_On_OneWay < 1){
+        current_direction = (current_direction+1)%2;
+        printf("No more on one-way after exit, direction is now: %d\n", current_direction);
     }
-
-    current_direction = (current_direction+1)%2;
-    printf("New direction is now: %d\n", current_direction);
     pthread_mutex_unlock(&one_way_t);
 
-    // Lets the remaining cars know the directin has been changed and is ready to take on new ones.
-    pthread_cond_signal(&one_way_vals_free);
+    pthread_mutex_lock(&crossed_count_lock);
+    cars_crossed++;
+    printf("CARS CROSSED: %d\n", cars_crossed);
+    pthread_mutex_unlock(&crossed_count_lock);
+    pthread_cond_signal(&crossed);
 }
 
 // Main Program Loop
@@ -142,6 +158,7 @@ int main(int argc, char* argv[]){
     int thread_count;
     int num_cars;
     int seed;
+    cars_crossed = 0;
 
     // Helps with generating car ids.
     car_generator_t car_generator;
@@ -231,5 +248,6 @@ int main(int argc, char* argv[]){
         pthread_cond_destroy (&car_generator.done);
         // TODO: clean up other sync primitives.
 
+        printf("TOTAL CARS CROSSED: %d\n", cars_crossed);
         return 0;
 }
