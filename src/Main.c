@@ -27,6 +27,7 @@ static volatile int current_direction = TO_BRIDGER;
 // Mutex for the current direction
 pthread_mutex_t direction_lock;
 
+// TODO: Define other mutex locks and stuff as structs???
 struct car_generator {
     pthread_mutex_t mutex;
     pthread_cond_t done;
@@ -48,14 +49,15 @@ void* OneVehicle(void* arg){
     pthread_mutex_unlock(&(*(car_generator_t*)(arg)).mutex);
     pthread_cond_signal(&(*(car_generator_t*)(arg)).done);
 
+    // TODO: Make this generate from SEED value.
     int direction = rand() % 2;
     printf("New CAR: %d. going in direction: %d\n", car_id, direction);
 
     ArriveBridgerOneWay(car_id, 0);
     //now the car is on the one-way section!
 
-    OnBridgerOneWay(direction);
-    ExitBridgerOneWay(direction);
+    OnBridgerOneWay(car_id, direction);
+    ExitBridgerOneWay(car_id, direction);
 
     //now the car is off the one way.
     pthread_exit(NULL);
@@ -84,20 +86,32 @@ pthread_mutex_unlock(&direction_lock);
 
 // Outputs the car's state as it passes through the one way.
 int OnBridgerOneWay(int* car_id, int direction){
-// TODO: Use prints or graphics library?
 
-// Checks the capacity of the one way
+    printf("Car %d is on the run way going %d", car_id, direction);
 
-// Monitors for race conditions via visual output!
+    // TODO: Make sure cars don't try to pass each other on the one way? (Race conditions)
+
+    // Monitors for race conditions via visual output!
+    // TODO: Use prints or graphics library?
 }
 
 // Removes the car from the one way
-int ExitBridgerOneWay(int direction){
-// Removes car from critical area?
+int ExitBridgerOneWay(int car_id, int direction){
+        
+    // Checks if it is safe for the car to go on the one way
+    pthread_mutex_lock(&oneway_load);
+    pthread_mutex_lock(&direction_lock);
 
-// Unlocks access to this area?
+    // Puts a car on the one way.
+    printf("Car: %d has left the one way, and is continuing towards: %d\n", car_id, direction);
+    Cars_On_OneWay -= 1;
 
+    // TODO: change direction & notify other cars if there are none left
+
+    pthread_mutex_unlock(&oneway_load);
+    pthread_mutex_unlock(&direction_lock);
 }
+
 
 // Main Program Loop
 int main(int argc, char* argv[]){
@@ -111,7 +125,7 @@ int main(int argc, char* argv[]){
         thread_count = 10;
         max_cars = 3;
         num_cars = 15;
-        printf("Not enough arguements, using default values.");
+        printf("Not enough arguements, using default values.\n");
     } else{
         // Initializes the maximum about of threads allowed.
         thread_count = atoi(argv[1]);
@@ -152,7 +166,7 @@ int main(int argc, char* argv[]){
             pthread_cond_wait(&car_generator.done, &car_generator.mutex);
 
             if(thread_creation_check){
-                printf("ERROR CREATING THREAD: %d", thread_creation_check);
+                printf("ERROR CREATING THREAD: %d\n", thread_creation_check);
                 // Release pthread mutex here???
                 exit(-1);
             }
@@ -167,7 +181,7 @@ int main(int argc, char* argv[]){
             // Checks that all threads are able to join
             int thread_join_error_check = pthread_join(threads[iter], NULL);
             if(thread_join_error_check){
-                printf("ERROR Joining threads.");
+                printf("ERROR Joining threads.\n");
             }
         }
         printf("Finished Joining Threads.\n");
