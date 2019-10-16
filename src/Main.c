@@ -11,6 +11,14 @@
 #define TO_BOZEMAN 1
 #define WAITFOR .01
 
+#define KNRM  "\x1B[0m"
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+#define KYEL  "\x1B[33m"
+#define KBLU  "\x1B[34m"
+#define KMAG  "\x1B[35m"
+#define KCYN  "\x1B[36m"
+#define KWHT  "\x1B[37m"
 
 /// Global varibales:
 
@@ -158,7 +166,7 @@ int ExitBridgerOneWay(int car_id, int direction){
     pthread_mutex_lock(&one_way_t);
 
     // Puts a car on the one way.
-    printf("Car: %d has left the one way, and is continuing towards: %s\n", car_id, DirectionToString(direction));
+    printf(KYEL "Car: %d has left the one way, and is continuing towards: %s\n" KWHT, car_id, DirectionToString(direction));
     Cars_On_OneWay -= 1;
 
     // TODO: change direction & notify other cars if there are none left
