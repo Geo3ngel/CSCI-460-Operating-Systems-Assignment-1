@@ -67,7 +67,7 @@ void* OneVehicle(void* arg){
     // Lock the car generator value to be sure other threads don't get the same id value.
     pthread_mutex_lock(&(*(car_generator_t*)(arg)).mutex);
     car_id = (*(car_generator_t*)(arg)).id;
-    // TODO: Make this generate from SEED value.
+
     int direction = (*(car_generator_t*)(arg)).direction;
     pthread_mutex_unlock(&(*(car_generator_t*)(arg)).mutex);
     pthread_cond_signal(&(*(car_generator_t*)(arg)).done);
@@ -77,11 +77,8 @@ void* OneVehicle(void* arg){
     ArriveBridgerOneWay(car_id, direction);
     //now the car is on the one-way section!
 
-    //temp 
-    sleep(.05);
     OnBridgerOneWay(car_id, direction);
-    // temp
-    sleep(.05);
+
     ExitBridgerOneWay(car_id, direction);
 
     //now the car is off the one way.
@@ -158,7 +155,6 @@ int ExitBridgerOneWay(int car_id, int direction){
     printf(KYEL "Car %d has left the one way, and is continuing towards: %s\n" KWHT, car_id, DirectionToString(direction));
     Cars_On_OneWay -= 1;
 
-    // TODO: change direction & notify other cars if there are none left
     printf("Cars_On_OneWay: %d\n\n", Cars_On_OneWay);
 
     // Changes direction by default if the amount of cars on the one way is 0 after this car exits.
@@ -166,7 +162,7 @@ int ExitBridgerOneWay(int car_id, int direction){
 
     pthread_mutex_lock(&crossed_count_lock);
     cars_crossed++;
-    // TODO: Remove. printf("CARS CROSSED: %d\n", cars_crossed);
+    
     pthread_mutex_unlock(&crossed_count_lock);
     pthread_cond_signal(&crossed);
 
@@ -277,7 +273,6 @@ int main(int argc, char* argv[]){
         // Cleans up after all the synchronization primitives
         pthread_mutex_destroy(&car_generator.mutex);
         pthread_cond_destroy (&car_generator.done);
-        // TODO: clean up other sync primitives.
 
         printf("TOTAL CARS CROSSED: %d\n", cars_crossed);
         return 0;
