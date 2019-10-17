@@ -72,7 +72,7 @@ void* OneVehicle(void* arg){
     pthread_mutex_unlock(&(*(car_generator_t*)(arg)).mutex);
     pthread_cond_signal(&(*(car_generator_t*)(arg)).done);
 
-    printf("New CAR: %d. going in direction: %s\n", car_id, DirectionToString(direction));
+    printf(KBLU "New CAR: %d. going in direction: %s\n" KWHT, car_id, DirectionToString(direction));
 
     ArriveBridgerOneWay(car_id, direction);
     //now the car is on the one-way section!
@@ -104,7 +104,7 @@ int ArriveBridgerOneWay(int car_id, int direction){
     // Checks if it is safe for the car to go on the one way
     pthread_mutex_lock(&one_way_t);
 
-    printf("Car %d has arrived at the one way facing %s\n", car_id, DirectionToString(direction));
+    printf(KMAG "Car %d has arrived at the one way facing %s\n" KWHT, car_id, DirectionToString(direction));
     while((Cars_On_OneWay >= max_cars) || (current_direction != direction) || draining_one_way){
         timeToWait.tv_sec = now.tv_sec + WAITFOR;
         timeToWait.tv_nsec = (now.tv_usec*1000UL);
@@ -194,7 +194,7 @@ int main(int argc, char* argv[]){
     if( argc < 4){
         // Set up values to a feault configuration rather than specified thread count/car max.
         num_cars = 100;
-        max_cars = 5;
+        max_cars = 10;
         dir_change_limit = 15;
         // Default run has a random seed.
         seed = time(NULL);
